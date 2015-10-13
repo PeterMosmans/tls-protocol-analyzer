@@ -47,7 +47,7 @@ Example output
     0x35   - TLS_RSA_WITH_AES_256_CBC_SHA
     0xa    - TLS_RSA_WITH_3DES_EDE_CBC_SHA
 [*] Compression methods:
-         0 - DEFLATE
+         0 - null
 [*] Extensions:
          0 - server_name (Length: 15)
              github.com

@@ -362,7 +362,8 @@ CIPHER_NAMES = {
     0xFFE1: 'SSL_RSA_FIPS_WITH_DES_CBC_SHA'}
 
 COMPRESSION_METHODS = {
-    0: 'DEFLATE'}
+    0: 'null',
+    1: 'DEFLATE'}
 
 EXTENSION_TYPES = {
     0: 'server_name',
