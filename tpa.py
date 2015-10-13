@@ -9,14 +9,11 @@ import sys
 import textwrap
 
 
-
 import dpkt
 import pcap
 
 from constants import *
 TLS_HANDSHAKE = 22
-## wget https://raw.githubusercontent.com/drwetter/testssl.sh/master/mapping-rfc.txt
-# cat mapping-rfc.txt|sed -e "s/^x/0x/g;s/[ ]*$/',/g;s/  /: /g"
 
 
 def analyze_packet(timestamp, packet):
@@ -108,17 +105,15 @@ def parse_tls_handshake(ip):
     if not isinstance(handshake.data, dpkt.ssl.TLSClientHello):
         verboseprint('wrong type')
         return
-    print '= {0}:{1} --> {2}:{3}'.format(socket.inet_ntoa(ip.src), tcp.sport,
+    print '[+] Client Hello detected ({0}:{1} --> {2}:{3})'.format(socket.inet_ntoa(ip.src), tcp.sport,
                                          socket.inet_ntoa(ip.dst), tcp.dport)
     parse_client_hello(handshake)
-
 
 def number_of_bytes(number):
     return int(log(number, 256) + 1)
 
-               
+
 def parse_client_hello(handshake):
-    print ('===== Client Hello detected')
     hello = handshake.data
     compressions = []
     cipher_suites = []
@@ -128,38 +123,65 @@ def parse_client_hello(handshake):
     # random is 32 bits time plus 8 bytes random
     pointer = 1 + session_id_len
     cipher_suites_len = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
-    print '= TLS Record Layer Length: {0}'.format(len(handshake))
-    print '= Client Hello Version: {0}'.format(dpkt.ssl.ssl3_versions_str[hello.version])
-    print '= Client Hello Length: {0}'.format(len(hello))
-    print '= Session ID Length: {0}'.format(session_id_len)
-    print '= Cipher Suites Length: {0} ({1} cipher suites)'.format(cipher_suites_len,
-                                                                   cipher_suites_len / 2)
+    verboseprint('TLS Record Layer Length: {0}'.format(len(handshake)))
+    verboseprint('Client Hello Version: {0}'.format(dpkt.ssl.ssl3_versions_str[hello.version]))
+    verboseprint('Client Hello Length: {0}'.format(len(hello)))
+    verboseprint('Session ID Length: {0}'.format(session_id_len))
+    verboseprint('Cipher Suites Length: {0} ({1} cipher suites)'.format(cipher_suites_len,
+                                                                   cipher_suites_len / 2))
     pointer += 2
     for i in range(pointer, pointer + cipher_suites_len, 2):
         cipher_suites.append(struct.unpack('!H', hello.data[i:i + 2])[0])
+    print('[*] Ciphers:')
     for cipher_suite in cipher_suites:
-        print '{0} - {1}'.format(hex(cipher_suite), pretty_print_cipher(cipher_suite))        
+        print '    {0:6} - {1}'.format(hex(cipher_suite), pretty_print_cipher(cipher_suite))
     pointer += cipher_suites_len
     compression_num = struct.unpack('B', hello.data[pointer])[0]
     pointer += 1
     for i in range(pointer, pointer + compression_num):
         compressions.append(struct.unpack('B', hello.data[i])[0])
-    print '= Compression Methods: {0}'.format(compression_num)
+    verboseprint('Compression Methods: {0}'.format(compression_num))
+    print '[*] Compression methods:'
     for compression in compressions:
-        print 'compression {0}'.format(compression)
+        print '    {0:6} - {1}'.format(compression,
+                                       pretty_print_compression(compression))
     pointer += compression_num
     if (pointer >= len(hello.data)):
         return
     extension_len = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
-    print '= Extensions Length: {0}'.format(extension_len)
+    verboseprint('Extensions Length: {0}'.format(extension_len))
     pointer += 2
+    print '[*] Extensions:'
     while (pointer < len(hello.data)):
         extension_type = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
         pointer += 2
-        extension_len = struct.unpack('!H', hello.data[pointer:pointer +2])[0]
-        print 'Type: {0}  Len: {1}'.format(hex(extension_type), extension_len)
-        pointer += extension_len + 2
+        extension_len = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
+        print '    {0:6} - {1} (Length: {2})'.format(extension_type,
+                                               pretty_print_extension(extension_type),
+                                               extension_len)
+        pointer += 2
+        if (extension_type == 0):
+            print '             {0}'.format(''.join(struct.unpack('!{0}s'.format(extension_len),
+                                            hello.data[pointer:pointer + extension_len])))
+        if (extension_type == 16):
+            for alpn_protocol in parse_ALPN(hello, pointer):
+                print '             {0}'.format(alpn_protocol)
+        pointer += extension_len
     sys.stdout.flush() 
+
+
+def parse_ALPN(hello, pointer):
+    alpn_extension_len = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
+    pointer += 2
+    alpn_protocols = []
+    orig_pointer = pointer
+    while (pointer < (orig_pointer + alpn_extension_len)):
+        alpn_string_len = struct.unpack('B', hello.data[pointer])[0]
+        pointer += 1
+        alpn_protocols.append(''.join(struct.unpack('!{0}s'.format(alpn_string_len),
+                                            hello.data[pointer:pointer + alpn_string_len])))
+        pointer += alpn_string_len
+    return alpn_protocols
 
 
 def pretty_print_cipher(cipher_suite):
@@ -169,15 +191,30 @@ def pretty_print_cipher(cipher_suite):
         return 'unknown'
 
 
+def pretty_print_extension(extension_type):
+    if extension_type in EXTENSION_TYPES:
+        return EXTENSION_TYPES[extension_type]
+    else:
+        return 'unknown'
+
+
+def pretty_print_compression(compression_method):
+    if compression_method in COMPRESSION_METHODS:
+        return COMPRESSION_METHODS[compression_method]
+    else:
+        return 'unknown'
+
+
 def main():
     global cap_filter
     global interface
+#    print pcap.findalldevs()
     parse_arguments()
-#    filename = 't:/KALI/output.pcap'
     if filename:
         read_file(filename)
     else:
         start_listening(interface, cap_filter)
+
 
 def read_file(filename):
  #   try:

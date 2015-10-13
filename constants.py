@@ -360,3 +360,36 @@ CIPHER_NAMES = {
     0xFEFE: 'SSL_RSA_FIPS_WITH_3DES_EDE_CBC_SHA',
     0xFFE0: 'SSL_RSA_FIPS_WITH_3DES_EDE_CBC_SHA',
     0xFFE1: 'SSL_RSA_FIPS_WITH_DES_CBC_SHA'}
+
+COMPRESSION_METHODS = {
+    0: 'DEFLATE'}
+
+EXTENSION_TYPES = {
+    0: 'server_name',
+    1: 'max_fragment_length',
+    2: 'client_certificate_url',
+    3: 'trusted_ca_keys',
+    4: 'truncated_hmac',
+    5: 'status_request',
+    6: 'user_mapping',
+    7: 'client_authz',
+    8: 'server_authz',
+    9: 'cert_type',
+    10: 'supported_groups',
+    11: 'ec_point_formats',
+    12: 'srp',
+    13: 'signature_algorithms',
+    14: 'use_srtp',
+    15: 'heartbeat',
+    16: 'application_layer_protocol_negotiation',
+    17: 'status_request_v2',
+    18: 'signed_certificate_timestamp',
+    19: 'client_certificate_type',
+    20: 'server_certificate_type',
+    21: 'padding',
+    22: 'encrypt_then_mac',
+    23: 'extended_master_secret',
+    35: 'SessionTicket TLS',
+    13172: 'next_protocol_negotiation',
+    65281: 'renegotiation_info'}
+
