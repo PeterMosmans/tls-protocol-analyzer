@@ -1,3 +1,4 @@
 dpkt==1.8.6.2
+netifaces==0.10.4
 pypcap==1.1.4
 wheel==0.26.0

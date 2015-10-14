@@ -10,6 +10,7 @@ import textwrap
 
 
 import dpkt
+import netifaces
 import pcap
 
 from constants import *
@@ -44,11 +45,16 @@ the Free Software Foundation, either version 3 of the License, or
                         default='', help='the pcap filter')
     parser.add_argument('-i', '--interface', action='store',
                         default='eth1', help='the interface to listen on')
+    parser.add_argument('--show-interfaces', action='store_true',
+                        help='show all available interfaces and exit')
     parser.add_argument('-r', '--read', metavar='FILE', action='store',
                         help='read from file (don\'t capture live packets)')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='increase output verbosity')
     args = parser.parse_args()
+    if args.show_interfaces:
+        show_interfaces()
+        exit()    
     if args.verbose:
         def verboseprint(*args):
             print '# ',
@@ -62,6 +68,20 @@ the Free Software Foundation, either version 3 of the License, or
     filename = None
     if args.read:
         filename = args.read
+
+
+
+def show_interfaces():
+    i = 0
+    for name in pcap.findalldevs():
+        prettydevicename = ''
+        if name.startswith('\Device\NPF_'):
+            name = name[12:]
+        if name.endswith('}'):
+            prettydevicename = 'eth{0} '.format(i)
+            i += 1
+        print '{1}{0} {2}'.format(name, prettydevicename,
+                                  netifaces.ifaddresses(name)[netifaces.AF_INET][0]['addr'])
 
 
 def parse_ip_packet(ip):
@@ -152,6 +172,10 @@ def parse_client_hello(handshake):
     verboseprint('Extensions Length: {0}'.format(extension_len))
     pointer += 2
     print '[*] Extensions:'
+    parse_extensions(hello, pointer)
+    sys.stdout.flush()
+
+def parse_extensions(hello, pointer):
     while (pointer < len(hello.data)):
         extension_type = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
         pointer += 2
@@ -161,19 +185,18 @@ def parse_client_hello(handshake):
                                                extension_len)
         pointer += 2
         if (extension_type == 0):
-            print '             {0}'.format(''.join(struct.unpack('!{0}s'.format(extension_len),
-                                            hello.data[pointer:pointer + extension_len])))
+            for server_name in parse_server_names(hello, pointer):
+                print '             {0}'.format(server_name)
         if (extension_type == 16):
             for alpn_protocol in parse_ALPN(hello, pointer):
                 print '             {0}'.format(alpn_protocol)
         pointer += extension_len
-    sys.stdout.flush() 
 
 
 def parse_ALPN(hello, pointer):
+    alpn_protocols = []
     alpn_extension_len = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
     pointer += 2
-    alpn_protocols = []
     orig_pointer = pointer
     while (pointer < (orig_pointer + alpn_extension_len)):
         alpn_string_len = struct.unpack('B', hello.data[pointer])[0]
@@ -182,6 +205,26 @@ def parse_ALPN(hello, pointer):
                                             hello.data[pointer:pointer + alpn_string_len])))
         pointer += alpn_string_len
     return alpn_protocols
+
+
+def parse_server_names(hello, pointer):
+    entries = []
+    list_length = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
+    pointer += 2
+    orig_pointer = pointer
+    while (pointer < (orig_pointer + list_length)):
+        entry_type = struct.unpack('B', hello.data[pointer])[0]
+        pointer += 1
+        sys.stdout.flush()
+        entry_length = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
+        pointer += 2
+        # type 0 = host name
+        if entry_type == 0:
+            entry_type = 'host name'
+        entries.append('{0} (Type {1})'.format(''.join(struct.unpack('!{0}s'.format(entry_length),
+                                                                     hello.data[pointer:pointer + entry_length])), entry_type))
+        pointer += entry_length
+    return entries
 
 
 def pretty_print_cipher(cipher_suite):
@@ -208,7 +251,6 @@ def pretty_print_compression(compression_method):
 def main():
     global cap_filter
     global interface
-#    print pcap.findalldevs()
     parse_arguments()
     if filename:
         read_file(filename)
@@ -227,11 +269,16 @@ def read_file(filename):
 
 
 def start_listening(interface, cap_filter):
-    pc = pcap.pcap(name=interface)
-    pc.setfilter(cap_filter)
-    print 'listening on {0}'.format(pc.name)
-    sys.stdout.flush()
-    pc.loop(0, analyze_packet)
+    try:
+        pc = pcap.pcap(name=interface)
+        pc.setfilter(cap_filter)
+        while True:
+            print '[+] listening on {0}'.format(pc.name)
+            sys.stdout.flush()
+            pc.loop(0, analyze_packet)
+            print ('loop ended')
+    except:
+        print '[-] issue while opening interface'
 
 
 if __name__ == "__main__":
