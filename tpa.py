@@ -44,7 +44,7 @@ the Free Software Foundation, either version 3 of the License, or
     parser.add_argument('--filter', action='store',
                         default='', help='the pcap filter')
     parser.add_argument('-i', '--interface', action='store',
-                        default='eth1', help='the interface to listen on')
+                        default='eth0', help='the interface to listen on')
     parser.add_argument('--show-interfaces', action='store_true',
                         help='show all available interfaces and exit')
     parser.add_argument('-r', '--read', metavar='FILE', action='store',
@@ -80,8 +80,11 @@ def show_interfaces():
         if name.endswith('}'):
             prettydevicename = 'eth{0} '.format(i)
             i += 1
-        print '{1}{0} {2}'.format(name, prettydevicename,
-                                  netifaces.ifaddresses(name)[netifaces.AF_INET][0]['addr'])
+        try:
+            print '{1}{0} {2}'.format(name, prettydevicename,
+                                      netifaces.ifaddresses(name)[netifaces.AF_INET][0]['addr'])
+        except:
+            print '{0}'.format(name)
 
 
 def parse_ip_packet(ip):
