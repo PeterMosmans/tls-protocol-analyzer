@@ -1,22 +1,32 @@
 # SSL/TLS Protocol Analyzer
 Passively listens on interface and shows information about SSL/TLS connections.
-scapy does something similar (and much, much more), but you'll need several dependencies. This script depends on dpkt and pypcap (if you want to sniff live traffic).
+Yes, scapy does something similar (and much, much more), but you'll need several dependencies. Getting scapy to run on Windows for example can be quite a hassle.
+This script 'only' depends on dpkt, and pypcap if you want to sniff live traffic.
+
+Please note that you need correct permissions to sniff traffic (root or Administrator privileges).
+
 
 Dependencies
 ------------
-dpkt
-pypcap
++ dpkt
++ pypcap
+
+Optional (to show IP addresses per interface):
++ netifaces
+
 
 Installation
 ------------
 ```pip install -r requirements.txt```
+Note that this also installs netifaces
+
 
 Usage
 ----
 ```
 ./tpa.py
 ```
-Listens on default interface eth1 and shows information about SSL/TLS connections. Currently only the Client Hello parser is implemented, so that's the information that will be displayed.
+Listens on default interface eth0 and shows information about SSL/TLS handshakes. Currently only the Client Hello parser is implemented, so that's the information that will be displayed.
 
 ```
 ./tpa.py -i eth3
@@ -24,11 +34,19 @@ Listens on default interface eth1 and shows information about SSL/TLS connection
 
 Listens on interface eth3
 
+When running on Linux environments (including Cygwin, MSYS and MSYS2 under Windows), you can specify the standard name (e.g. `eth1`) for the interface.
+When running native on Windows you need to specify the extremely unfriendly looking device name, e.g. `\\DEVICE\NPF_{C0FFEE-15-G00D}`
+Note that you can retrieve a list of these device names using the `--list-interfaces` option
+
 ```
 ./tpa.py -r PCAPFILE
 ```
 Reads a pcap file and displays information about SSL/TLS connections.
 
+```
+./tpa.py --list-interfaces
+```
+Lists all available interfaces with their IP addresses 
 
 Example output
 --------------
@@ -50,7 +68,7 @@ Example output
          0 - null
 [*] Extensions:
          0 - server_name (Length: 15)
-             github.com
+             github.com (Type host name)
      65281 - renegotiation_info (Length: 1)
         10 - supported_groups (Length: 8)
         11 - ec_point_formats (Length: 2)

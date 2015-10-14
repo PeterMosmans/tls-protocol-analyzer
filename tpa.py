@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import argparse
-from binascii import hexlify
 from math import log
 import socket
 import struct
@@ -10,7 +9,6 @@ import textwrap
 
 
 import dpkt
-import netifaces
 import pcap
 
 from constants import *
@@ -45,16 +43,16 @@ the Free Software Foundation, either version 3 of the License, or
                         default='', help='the pcap filter')
     parser.add_argument('-i', '--interface', action='store',
                         default='eth0', help='the interface to listen on')
-    parser.add_argument('--show-interfaces', action='store_true',
-                        help='show all available interfaces and exit')
+    parser.add_argument('--list-interfaces', action='store_true',
+                        help='list all available interfaces and exit')
     parser.add_argument('-r', '--read', metavar='FILE', action='store',
                         help='read from file (don\'t capture live packets)')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='increase output verbosity')
     args = parser.parse_args()
-    if args.show_interfaces:
-        show_interfaces()
-        exit()    
+    if args.list_interfaces:
+        list_interfaces()
+        exit()
     if args.verbose:
         def verboseprint(*args):
             print '# ',
@@ -70,21 +68,22 @@ the Free Software Foundation, either version 3 of the License, or
         filename = args.read
 
 
-
-def show_interfaces():
+def list_interfaces():
     i = 0
     for name in pcap.findalldevs():
         prettydevicename = ''
+        queryname = name
         if name.startswith('\Device\NPF_'):
-            name = name[12:]
+            queryname = name[12:]
         if name.endswith('}'):
             prettydevicename = 'eth{0} '.format(i)
             i += 1
         try:
+            import netifaces
             print '{1}{0} {2}'.format(name, prettydevicename,
-                                      netifaces.ifaddresses(name)[netifaces.AF_INET][0]['addr'])
+                                      netifaces.ifaddresses(queryname)[netifaces.AF_INET][0]['addr'])
         except:
-            print '{0}'.format(name)
+            print '{0}{1}'.format(prettydevicename, name)
 
 
 def parse_ip_packet(ip):
@@ -279,7 +278,7 @@ def start_listening(interface, cap_filter):
             print '[+] listening on {0}'.format(pc.name)
             sys.stdout.flush()
             pc.loop(0, analyze_packet)
-            print ('loop ended')
+        print ('[-] stopping')
     except:
         print '[-] issue while opening interface'
 

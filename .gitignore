@@ -5,6 +5,8 @@
 local
 pip-selfcheck.json
 [Ss]cripts
+# Python bytecode files
+*.pyc
 # Emacs temporary files
 .\#*
 \#*\#
