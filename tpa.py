@@ -131,8 +131,23 @@ def parse_tls_handshake(ip):
                                          socket.inet_ntoa(ip.dst), tcp.dport)
     parse_client_hello(handshake)
 
+
 def number_of_bytes(number):
     return int(log(number, 256) + 1)
+
+
+def unpacker(type_string, packet):
+    """Returns network-order parsed data and the packet minus the parsed data."""
+    if type_string.endswith('H'):
+        length = 2
+    if type_string.endswith('B'):
+        length = 1
+    if type_string.endswith('s'):
+        length = int(type_string[:(len(type_string) - 1)])
+    data = struct.unpack('!' + type_string, packet[:length])[0]
+    if type_string[0] == 's':
+        data = ''.join(data)
+    return data, packet[length:]
 
 
 def parse_client_hello(handshake):
@@ -144,88 +159,70 @@ def parse_client_hello(handshake):
     session_id_len = len(hello.session_id)
     # random is 32 bits time plus 8 bytes random
     pointer = 1 + session_id_len
-    cipher_suites_len = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
+    payload = hello.data[pointer:]
+    cipher_suites_len, payload = unpacker('H', payload)
     verboseprint('TLS Record Layer Length: {0}'.format(len(handshake)))
     verboseprint('Client Hello Version: {0}'.format(dpkt.ssl.ssl3_versions_str[hello.version]))
     verboseprint('Client Hello Length: {0}'.format(len(hello)))
     verboseprint('Session ID Length: {0}'.format(session_id_len))
     verboseprint('Cipher Suites Length: {0} ({1} cipher suites)'.format(cipher_suites_len,
                                                                    cipher_suites_len / 2))
-    pointer += 2
-    for i in range(pointer, pointer + cipher_suites_len, 2):
-        cipher_suites.append(struct.unpack('!H', hello.data[i:i + 2])[0])
     print('[*] Ciphers:')
-    for cipher_suite in cipher_suites:
+    for i in range(0, cipher_suites_len / 2):
+        cipher_suite, payload = unpacker('H', payload)
         print '    {0:6} - {1}'.format(hex(cipher_suite), pretty_print_cipher(cipher_suite))
-    pointer += cipher_suites_len
-    compression_num = struct.unpack('B', hello.data[pointer])[0]
-    pointer += 1
-    for i in range(pointer, pointer + compression_num):
-        compressions.append(struct.unpack('B', hello.data[i])[0])
-    verboseprint('Compression Methods: {0}'.format(compression_num))
+        cipher_suites.append(cipher_suite)
+
     print '[*] Compression methods:'
-    for compression in compressions:
+    compression_num, payload = unpacker('B', payload)
+    for i in range(0, compression_num):
+        compression, payload = unpacker('B', payload)
+        compressions.append(compression)
         print '    {0:6} - {1}'.format(compression,
                                        pretty_print_compression(compression))
-    pointer += compression_num
-    if (pointer >= len(hello.data)):
+    if (len(hello.data) <= 0):
         return
-    extension_len = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
-    verboseprint('Extensions Length: {0}'.format(extension_len))
-    pointer += 2
-    print '[*] Extensions:'
-    parse_extensions(hello, pointer)
+    parse_extensions(payload)
     sys.stdout.flush()
 
-def parse_extensions(hello, pointer):
-    while (pointer < len(hello.data)):
-        extension_type = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
-        pointer += 2
-        extension_len = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
+
+def parse_extensions(payload):
+    print '[*] Extensions:'
+    extension_len, payload = unpacker('H', payload)
+    verboseprint('Extensions Length: {0}'.format(extension_len))
+
+    while (len(payload) > 0):
+        extension_type, payload = unpacker('H', payload)
+        extension_len, payload = unpacker('H', payload)
         print '    {0:6} - {1} (Length: {2})'.format(extension_type,
                                                pretty_print_extension(extension_type),
                                                extension_len)
-        pointer += 2
         if (extension_type == 0):
-            for server_name in parse_server_names(hello, pointer):
-                print '             {0}'.format(server_name)
+            server_names = parse_server_names(payload[:extension_len])
         if (extension_type == 16):
-            for alpn_protocol in parse_ALPN(hello, pointer):
-                print '             {0}'.format(alpn_protocol)
-        pointer += extension_len
+            alpn_protocols = parse_ALPN(payload[:extension_len])
+        payload = payload[extension_len:]
 
 
-def parse_ALPN(hello, pointer):
+def parse_ALPN(payload):
     alpn_protocols = []
-    alpn_extension_len = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
-    pointer += 2
-    orig_pointer = pointer
-    while (pointer < (orig_pointer + alpn_extension_len)):
-        alpn_string_len = struct.unpack('B', hello.data[pointer])[0]
-        pointer += 1
-        alpn_protocols.append(''.join(struct.unpack('!{0}s'.format(alpn_string_len),
-                                            hello.data[pointer:pointer + alpn_string_len])))
-        pointer += alpn_string_len
+    alpn_extension_len, payload = unpacker('H', payload)
+    while (len(payload) > 0):
+        string_len, payload = unpacker('B', payload)
+        alpn_protocol, payload = unpacker('{0}s'.format(string_len), payload)
+        alpn_protocols.append(alpn_protocol)
+        print '             {0}'.format(alpn_protocol)
     return alpn_protocols
 
 
-def parse_server_names(hello, pointer):
+def parse_server_names(payload):
     entries = []
-    list_length = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
-    pointer += 2
-    orig_pointer = pointer
-    while (pointer < (orig_pointer + list_length)):
-        entry_type = struct.unpack('B', hello.data[pointer])[0]
-        pointer += 1
-        sys.stdout.flush()
-        entry_length = struct.unpack('!H', hello.data[pointer:pointer + 2])[0]
-        pointer += 2
-        # type 0 = host name
-        if entry_type == 0:
-            entry_type = 'host name'
-        entries.append('{0} (Type {1})'.format(''.join(struct.unpack('!{0}s'.format(entry_length),
-                                                                     hello.data[pointer:pointer + entry_length])), entry_type))
-        pointer += entry_length
+    list_length, payload = unpacker('H', payload)
+    while (len(payload) > 0):
+        entry_type, payload = unpacker('B', payload)
+        entry_length, payload = unpacker('H', payload)
+        server_name, payload = unpacker('{0}s'.format(entry_length), payload)
+        print '             {0}'.format(server_name)
     return entries
 
 

@@ -392,5 +392,7 @@ EXTENSION_TYPES = {
     23: 'extended_master_secret',
     35: 'SessionTicket TLS',
     13172: 'next_protocol_negotiation',
+    30031: 'channel_id_old',
+    30032: 'channel_id',
+    62208: 'tack',
     65281: 'renegotiation_info'}
-
