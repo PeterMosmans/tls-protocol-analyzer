@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+from binascii import hexlify
 from math import log
 import socket
 import struct
@@ -11,8 +12,28 @@ import textwrap
 import dpkt
 import pcap
 
-from constants import *
+from constants import PRETTY_NAMES
 TLS_HANDSHAKE = 22
+
+
+class Extension:
+    """Encapsulates TLS extensions."""
+
+    def __init__(self, payload):
+        self._type_id, payload = unpacker('H', payload)
+        self._type_name = pretty_print_name('extension_type', self._type_id)
+        self._length, payload = unpacker('H', payload)
+        # Data contains an array with the 'raw' contents
+        self._data = None
+        # pretty_data contains an array with the 'beautified' contents
+        self._pretty_data = None
+        if self._length > 0:
+            self._data, self._pretty_data = parse_extension(payload[:self._length],
+                                                            self._type_name)
+
+    def __str__(self):
+        # Prints out data array in textual format
+        return '{0}: {1}'.format(self._type_name, self._pretty_data)
 
 
 def analyze_packet(timestamp, packet):
@@ -99,37 +120,42 @@ def parse_tcp_packet(ip):
 
 def parse_tls_handshake(ip):
     tcp = ip.data
-    verboseprint('TLS handshake detected')
     records = []
     try:
         records, bytes_used = dpkt.ssl.tls_multi_factory(tcp.data)
     except:
         verboseprint('exception - issue parsing TLS data')
         return
-    if len(records) <= 0:
-        verboseprint('issue parsing TLS data')
-        return
     for record in records:
-        if record.type != TLS_HANDSHAKE:
-            verboseprint('Not a TLS handshake')
+        try:
+            handshake = dpkt.ssl.TLSHandshake(record.data)
+            if handshake.data == 0:
+                print 'gotcha'
+        except:
+            verboseprint('exception while parsing TLS handshake record')
             return
-        if len(record.data) == 0:
-            verboseprint('Zero length')
-            return
-        if ord(record.data[0]) != 1:
-            verboseprint('Wrong type')
-            return
-    try:
-        handshake = dpkt.ssl.TLSHandshake(record.data)
-    except:
-        verboseprint('issue parsing TLS handshake')
-        return
-    if not isinstance(handshake.data, dpkt.ssl.TLSClientHello):
-        verboseprint('wrong type')
-        return
-    print '[+] Client Hello detected ({0}:{1} --> {2}:{3})'.format(socket.inet_ntoa(ip.src), tcp.sport,
-                                         socket.inet_ntoa(ip.dst), tcp.dport)
-    parse_client_hello(handshake)
+        if isinstance(handshake.data, dpkt.ssl.TLSClientHello):
+            print '[+++] Client Hello detected ({0}:{1} --> {2}:{3})'.format(socket.inet_ntoa(ip.src),
+                                                                         tcp.sport,
+                                                                         socket.inet_ntoa(ip.dst),
+                                                                         tcp.dport)
+            parse_client_hello(handshake)
+        if isinstance(handshake.data, dpkt.ssl.TLSServerHello):
+            print '[+++] Server Hello detected ({0}:{1} <-- {2}:{3})'.format(socket.inet_ntoa(ip.src),
+                                                                         tcp.sport,
+                                                                         socket.inet_ntoa(ip.dst),
+                                                                         tcp.dport)
+            parse_server_hello(handshake.data)
+        if isinstance(handshake.data, dpkt.ssl.TLSClientKeyExchange):
+            print ('[+++] Client Key Exchange')
+        if isinstance(handshake.data, dpkt.ssl.TLSCertificate):
+            print ('[+++] Certificate')
+        if isinstance(handshake.data, dpkt.ssl.TLSFinished):
+            print '[+++] Handshake finished ({0}:{1} <-- {2}:{3})'.format(socket.inet_ntoa(ip.src),
+                                                                         tcp.sport,
+                                                                         socket.inet_ntoa(ip.dst),
+                                                                         tcp.dport)
+    sys.stdout.flush()
 
 
 def number_of_bytes(number):
@@ -150,101 +176,120 @@ def unpacker(type_string, packet):
     return data, packet[length:]
 
 
+def parse_server_hello(handshake):
+    payload = handshake.data
+    session_id, payload = parse_string('B', payload)
+    cipher_suite, payload = unpacker('H', payload)
+    print('[*]   Cipher: {0}'.format(pretty_print_name('cipher_suites', cipher_suite)))
+
+
 def parse_client_hello(handshake):
     hello = handshake.data
     compressions = []
     cipher_suites = []
     extensions = []
     handshake_length = number_of_bytes(len(hello))
-    session_id_len = len(hello.session_id)
-    # random is 32 bits time plus 8 bytes random
-    pointer = 1 + session_id_len
-    payload = hello.data[pointer:]
-    cipher_suites_len, payload = unpacker('H', payload)
+    payload = handshake.data.data
+    session_id, payload = parse_string('B', payload)
+    cipher_suites, pretty_cipher_suites = parse_extension(payload, 'cipher_suites')
     verboseprint('TLS Record Layer Length: {0}'.format(len(handshake)))
     verboseprint('Client Hello Version: {0}'.format(dpkt.ssl.ssl3_versions_str[hello.version]))
     verboseprint('Client Hello Length: {0}'.format(len(hello)))
-    verboseprint('Session ID Length: {0}'.format(session_id_len))
-    verboseprint('Cipher Suites Length: {0} ({1} cipher suites)'.format(cipher_suites_len,
-                                                                   cipher_suites_len / 2))
-    print('[*] Ciphers:')
-    for i in range(0, cipher_suites_len / 2):
-        cipher_suite, payload = unpacker('H', payload)
-        print '    {0:6} - {1}'.format(hex(cipher_suite), pretty_print_cipher(cipher_suite))
-        cipher_suites.append(cipher_suite)
-
-    print '[*] Compression methods:'
-    compression_num, payload = unpacker('B', payload)
-    for i in range(0, compression_num):
-        compression, payload = unpacker('B', payload)
-        compressions.append(compression)
-        print '    {0:6} - {1}'.format(compression,
-                                       pretty_print_compression(compression))
-    if (len(hello.data) <= 0):
-        return
-    parse_extensions(payload)
-    sys.stdout.flush()
+    verboseprint('Session ID: {0}'.format(session_id))
+    print('[*]   Ciphers: {0}'.format(pretty_cipher_suites))
+    # consume 2 bytes for each cipher suite plus 2 length bytes
+    payload = payload[(len(cipher_suites) * 2) + 2:]
+    compressions, pretty_compressions = parse_extension(payload, 'compression_methods')
+    print '[*]   Compression methods: {0}'.format(pretty_compressions)
+    # consume 1 byte for each compression method plus 1 length byte
+    payload = payload[len(compressions) + 1:]
+    extensions = parse_extensions(payload)
+    for extension in extensions:
+        print('      {0}'.format(extension))
 
 
 def parse_extensions(payload):
-    print '[*] Extensions:'
-    extension_len, payload = unpacker('H', payload)
-    verboseprint('Extensions Length: {0}'.format(extension_len))
+    extensions = []
+    if (len(payload) <= 0):
+        return
+
+    print '[*]   Extensions:'
+    extensions_len, payload = unpacker('H', payload)
+    verboseprint('Extensions Length: {0}'.format(extensions_len))
 
     while (len(payload) > 0):
-        extension_type, payload = unpacker('H', payload)
-        extension_len, payload = unpacker('H', payload)
-        print '    {0:6} - {1} (Length: {2})'.format(extension_type,
-                                               pretty_print_extension(extension_type),
-                                               extension_len)
-        if (extension_type == 0):
-            server_names = parse_server_names(payload[:extension_len])
-        if (extension_type == 16):
-            alpn_protocols = parse_ALPN(payload[:extension_len])
-        payload = payload[extension_len:]
+        extension = Extension(payload)
+        extensions.append(extension)
+        # consume 2 bytes for type and 2 bytes for length
+        payload = payload[extension._length + 4:]
+    return extensions
 
 
-def parse_ALPN(payload):
-    alpn_protocols = []
-    alpn_extension_len, payload = unpacker('H', payload)
-    while (len(payload) > 0):
-        string_len, payload = unpacker('B', payload)
-        alpn_protocol, payload = unpacker('{0}s'.format(string_len), payload)
-        alpn_protocols.append(alpn_protocol)
-        print '             {0}'.format(alpn_protocol)
-    return alpn_protocols
-
-
-def parse_server_names(payload):
+def parse_extension(payload, type_name):
+    """
+    Parses the extension within the payload based on the type_name
+    Returns an array of raw values as well as an array of prettified values
+    """
     entries = []
-    list_length, payload = unpacker('H', payload)
-    while (len(payload) > 0):
-        entry_type, payload = unpacker('B', payload)
-        entry_length, payload = unpacker('H', payload)
-        server_name, payload = unpacker('{0}s'.format(entry_length), payload)
-        print '             {0}'.format(server_name)
-    return entries
+    pretty_entries = []
+    format_list_length = 'H'
+    list_length = 0
+    if type_name == 'ec_point_formats':
+        format_list_length = 'B'
+    if type_name == 'compression_methods':
+        format_list_length = 'B'
+        format_entry = 'B'
+    if len(payload) > 1:  # contents are a list
+        list_length, payload = unpacker(format_list_length, payload)
+        verboseprint('type {0}, list length is {1}'.format(type_name, list_length))
+    if type_name == 'status_request':
+        _type, payload = unpacker('B', payload)
+        format_entry = 'H'
+    if type_name  == 'padding':
+        return payload, hexlify(payload)
+    if type_name == 'SessionTicket_TLS':
+        return payload, hexlify(payload)
+    format_entry = 'B'
+    if type_name == 'cipher_suites':
+        format_entry = 'H'
+    if type_name == 'supported_groups':
+        format_entry = 'H'
+    if type_name == 'signature_algorithms':
+        format_entry = 'H'
+    if type_name == 'cipher_suites':
+        format_entry = 'H'
+    payload = payload[:list_length]
+    while (len(payload) >  0):
+        if type_name == 'server_name':
+            _type, payload = unpacker('B', payload)
+            entry, payload = parse_string('H', payload)
+        else:
+            if type_name == 'application_layer_protocol_negotiation':
+                entry, payload = parse_string('B', payload)
+            else:
+                entry, payload = unpacker(format_entry, payload)
+        entries.append(entry)
+        if type_name == 'signature_algorithms':
+            pretty_entries.append('{0}-{1}'.format(pretty_print_name('signature_algorithms_hash', entry >> 8),
+                                                    pretty_print_name('signature_algorithms_signature', entry % 256)))
+        else:
+            pretty_entries.append(pretty_print_name(type_name, entry))
+    return entries, pretty_entries
 
 
-def pretty_print_cipher(cipher_suite):
-    if cipher_suite in CIPHER_NAMES:
-        return CIPHER_NAMES[cipher_suite]
-    else:
-        return 'unknown'
+def parse_string(format_string, payload):
+    """Parses a Pascal-type string (length specified first) from payload."""
+    string_length, payload = unpacker(format_string, payload)
+    entry, payload = unpacker('{0}s'.format(string_length), payload)
+    return entry, payload
 
 
-def pretty_print_extension(extension_type):
-    if extension_type in EXTENSION_TYPES:
-        return EXTENSION_TYPES[extension_type]
-    else:
-        return 'unknown'
-
-
-def pretty_print_compression(compression_method):
-    if compression_method in COMPRESSION_METHODS:
-        return COMPRESSION_METHODS[compression_method]
-    else:
-        return 'unknown'
+def pretty_print_name(name_type, name_value):
+    """Returns the pretty name for type name_type."""
+    if name_type in PRETTY_NAMES:
+        if name_value in PRETTY_NAMES[name_type]:
+            name_value = PRETTY_NAMES[name_type][name_value]
+    return name_value
 
 
 def main():
@@ -258,13 +303,13 @@ def main():
 
 
 def read_file(filename):
- #   try:
-    with open(filename, 'rb') as f:
-        capture = dpkt.pcap.Reader(f)
-        for timestamp, packet in capture:
-            analyze_packet(timestamp, packet)
-#    except:
-#        print 'could not parse {0}'.format(filename)
+    try:
+        with open(filename, 'rb') as f:
+            capture = dpkt.pcap.Reader(f)
+            for timestamp, packet in capture:
+                analyze_packet(timestamp, packet)
+    except:
+        print 'could not parse {0}'.format(filename)
 
 
 def start_listening(interface, cap_filter):
