@@ -134,27 +134,38 @@ def parse_tls_handshake(ip):
         except:
             verboseprint('exception while parsing TLS handshake record')
             return
-        if isinstance(handshake.data, dpkt.ssl.TLSClientHello):
-            print '[+++] Client Hello detected ({0}:{1} --> {2}:{3})'.format(socket.inet_ntoa(ip.src),
-                                                                         tcp.sport,
-                                                                         socket.inet_ntoa(ip.dst),
-                                                                         tcp.dport)
+        client = '{0}:{1}'.format(socket.inet_ntoa(ip.src), tcp.sport)
+        server = '{0}:{1}'.format(socket.inet_ntoa(ip.dst),tcp.dport)
+        if isinstance(handshake.data, dpkt.ssl.TLSClientHello):  # 1
+            print('[+++] --> ClientHello {0} -> {1}'.format(client, server))
             parse_client_hello(handshake)
-        if isinstance(handshake.data, dpkt.ssl.TLSServerHello):
-            print '[+++] Server Hello detected ({0}:{1} <-- {2}:{3})'.format(socket.inet_ntoa(ip.src),
-                                                                         tcp.sport,
-                                                                         socket.inet_ntoa(ip.dst),
-                                                                         tcp.dport)
+            return
+        if isinstance(handshake.data, dpkt.ssl.TLSServerHello):  # 2
+            print('[+++] <-- ServerHello {1} <- {0}'.format(client, server))
             parse_server_hello(handshake.data)
-        if isinstance(handshake.data, dpkt.ssl.TLSClientKeyExchange):
-            print ('[+++] Client Key Exchange')
-        if isinstance(handshake.data, dpkt.ssl.TLSCertificate):
-            print ('[+++] Certificate')
-        if isinstance(handshake.data, dpkt.ssl.TLSFinished):
-            print '[+++] Handshake finished ({0}:{1} <-- {2}:{3})'.format(socket.inet_ntoa(ip.src),
-                                                                         tcp.sport,
-                                                                         socket.inet_ntoa(ip.dst),
-                                                                         tcp.dport)
+            return
+        if isinstance(handshake.data, dpkt.ssl.TLSCertificate):  # 11
+            print('[+++] <-- Certificate {1} <- {0}'.format(client, server))
+            return
+        if isinstance(handshake.data, dpkt.ssl.TLSServerKeyExchange):  # 12
+            print('[+++] <-- ServerKeyExchange {1} <- {0}'.format(server, client))
+            return
+        if isinstance(handshake.data, dpkt.ssl.TLSCertificateRequest):  # 13
+            print('[+++] <-- CertificateRequest {1} <- {0}'.format(client, server))
+            return
+        if isinstance(handshake.data, dpkt.ssl.TLSServerHelloDone):  # 14
+            print('[+++] <-- ServerHelloDone {1} <- {0}'.format(client, server))
+            return
+        if isinstance(handshake.data, dpkt.ssl.TLSCertificateVerify ):  # 15
+            print('[+++] --> CertificateVerify {0} -> {1}'.format(client, server))
+            return
+        if isinstance(handshake.data, dpkt.ssl.TLSClientKeyExchange):  # 16
+            print('[+++] --> ClientKeyExchange {0} -> {1}'.format(client, server))
+            return
+        if isinstance(handshake.data, dpkt.ssl.TLSFinished):  # 20
+            print('[+++] --> Finished {0} -> {1}'.format(client, server))
+            return
+        print('[-] Unrecognized handshake type: {0}'.format(handshake.data[0]))
     sys.stdout.flush()
 
 
