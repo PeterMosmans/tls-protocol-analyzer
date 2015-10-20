@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
+from __future__ import absolute_import
+from __future__ import print_function
 import argparse
 from binascii import hexlify
-from math import log
 import socket
 import struct
 import sys
@@ -76,10 +77,10 @@ the Free Software Foundation, either version 3 of the License, or
         exit()
     if args.verbose:
         def verboseprint(*args):
-            print '# ',
+            print('# ', end="")
             for arg in args:
-                print arg,
-                print
+                print(arg, end="")
+            print
     else:
         verboseprint = lambda *a: None
     interface = args.interface
@@ -101,10 +102,10 @@ def list_interfaces():
             i += 1
         try:
             import netifaces
-            print '{1}{0} {2}'.format(name, prettydevicename,
-                                      netifaces.ifaddresses(queryname)[netifaces.AF_INET][0]['addr'])
+            print('{1}{0} {2}'.format(name, prettydevicename,
+                                      netifaces.ifaddresses(queryname)[netifaces.AF_INET][0]['addr']))
         except:
-            print '{0}{1}'.format(prettydevicename, name)
+            print('{0}{1}'.format(prettydevicename, name))
 
 
 def parse_ip_packet(ip):
@@ -129,41 +130,39 @@ def parse_tls_handshake(ip):
     for record in records:
         try:
             handshake = dpkt.ssl.TLSHandshake(record.data)
-            if handshake.data == 0:
-                print 'gotcha'
         except:
             verboseprint('exception while parsing TLS handshake record')
             return
         client = '{0}:{1}'.format(socket.inet_ntoa(ip.src), tcp.sport)
-        server = '{0}:{1}'.format(socket.inet_ntoa(ip.dst),tcp.dport)
+        server = '{0}:{1}'.format(socket.inet_ntoa(ip.dst), tcp.dport)
         if isinstance(handshake.data, dpkt.ssl.TLSClientHello):  # 1
-            print('[+++] --> ClientHello {0} -> {1}'.format(client, server))
+            print('--> ClientHello {0} -> {1}'.format(client, server))
             parse_client_hello(handshake)
             return
         if isinstance(handshake.data, dpkt.ssl.TLSServerHello):  # 2
-            print('[+++] <-- ServerHello {1} <- {0}'.format(client, server))
+            print('<-- ServerHello {1} <- {0}'.format(client, server))
             parse_server_hello(handshake.data)
             return
         if isinstance(handshake.data, dpkt.ssl.TLSCertificate):  # 11
-            print('[+++] <-- Certificate {1} <- {0}'.format(client, server))
+            print('<-- Certificate {0} <- {1}'.format(client, server))
             return
         if isinstance(handshake.data, dpkt.ssl.TLSServerKeyExchange):  # 12
-            print('[+++] <-- ServerKeyExchange {1} <- {0}'.format(server, client))
+            print('<-- ServerKeyExchange {1} <- {0}'.format(server, client))
             return
         if isinstance(handshake.data, dpkt.ssl.TLSCertificateRequest):  # 13
-            print('[+++] <-- CertificateRequest {1} <- {0}'.format(client, server))
+            print('<-- CertificateRequest {1} <- {0}'.format(client, server))
             return
         if isinstance(handshake.data, dpkt.ssl.TLSServerHelloDone):  # 14
-            print('[+++] <-- ServerHelloDone {1} <- {0}'.format(client, server))
+            print('<-- ServerHelloDone {1} <- {0}'.format(client, server))
             return
-        if isinstance(handshake.data, dpkt.ssl.TLSCertificateVerify ):  # 15
-            print('[+++] --> CertificateVerify {0} -> {1}'.format(client, server))
+        if isinstance(handshake.data, dpkt.ssl.TLSCertificateVerify):  # 15
+            print('--> CertificateVerify {0} -> {1}'.format(client, server))
             return
         if isinstance(handshake.data, dpkt.ssl.TLSClientKeyExchange):  # 16
             print('[+++] --> ClientKeyExchange {0} -> {1}'.format(client, server))
             return
         if isinstance(handshake.data, dpkt.ssl.TLSFinished):  # 20
-            print('[+++] --> Finished {0} -> {1}'.format(client, server))
+            print('--> Finished {0} -> {1}'.format(client, server))
             return
         print('[-] Unrecognized handshake type: {0}'.format(handshake.data[0]))
     sys.stdout.flush()
@@ -199,7 +198,7 @@ def parse_client_hello(handshake):
     compressions = []
     cipher_suites = []
     extensions = []
-    handshake_length = number_of_bytes(len(hello))
+#    handshake_length = number_of_bytes(len(hello))
     payload = handshake.data.data
     session_id, payload = parse_string('B', payload)
     cipher_suites, pretty_cipher_suites = parse_extension(payload, 'cipher_suites')
@@ -211,7 +210,7 @@ def parse_client_hello(handshake):
     # consume 2 bytes for each cipher suite plus 2 length bytes
     payload = payload[(len(cipher_suites) * 2) + 2:]
     compressions, pretty_compressions = parse_extension(payload, 'compression_methods')
-    print '[*]   Compression methods: {0}'.format(pretty_compressions)
+    print('[*]   Compression methods: {0}'.format(pretty_compressions))
     # consume 1 byte for each compression method plus 1 length byte
     payload = payload[len(compressions) + 1:]
     extensions = parse_extensions(payload)
@@ -224,7 +223,7 @@ def parse_extensions(payload):
     if (len(payload) <= 0):
         return
 
-    print '[*]   Extensions:'
+    print('[*]   Extensions:')
     extensions_len, payload = unpacker('H', payload)
     verboseprint('Extensions Length: {0}'.format(extensions_len))
 
@@ -270,7 +269,7 @@ def parse_extension(payload, type_name):
     if type_name == 'cipher_suites':
         format_entry = 'H'
     payload = payload[:list_length]
-    while (len(payload) >  0):
+    while (len(payload) > 0):
         if type_name == 'server_name':
             _type, payload = unpacker('B', payload)
             entry, payload = parse_string('H', payload)
@@ -319,21 +318,24 @@ def read_file(filename):
             capture = dpkt.pcap.Reader(f)
             for timestamp, packet in capture:
                 analyze_packet(timestamp, packet)
-    except:
-        print 'could not parse {0}'.format(filename)
+    except IOError:
+        print('could not parse {0}'.format(filename))
 
 
 def start_listening(interface, cap_filter):
-    try:
-        pc = pcap.pcap(name=interface)
-        pc.setfilter(cap_filter)
-        while True:
-            print '[+] listening on {0}'.format(pc.name)
-            sys.stdout.flush()
-            pc.loop(0, analyze_packet)
-        print ('[-] stopping')
-    except:
-        print '[-] issue while opening interface'
+    """
+    Starts the listening process with an optional filter.
+    """
+ #   try:
+    pc = pcap.pcap(name=interface)
+    pc.setfilter(cap_filter)
+    while True:
+        print('[+] listening on {0}'.format(pc.name))
+        sys.stdout.flush()
+        pc.loop(0, analyze_packet)
+        print('[-] stopping')
+#    except:
+        print('[-] issue while opening interface')
 
 
 if __name__ == "__main__":
