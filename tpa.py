@@ -122,11 +122,11 @@ def parse_tcp_packet(ip):
 def parse_tls_handshake(ip):
     tcp = ip.data
     records = []
-    try:
-        records, bytes_used = dpkt.ssl.tls_multi_factory(tcp.data)
-    except:
-        verboseprint('exception - issue parsing TLS data')
-        return
+#    try:
+    records, bytes_used = dpkt.ssl.tls_multi_factory(tcp.data)
+ #   except:
+#        verboseprint('exception - issue parsing TLS data')
+ #       return
     for record in records:
         try:
             handshake = dpkt.ssl.TLSHandshake(record.data)
@@ -138,33 +138,33 @@ def parse_tls_handshake(ip):
         if isinstance(handshake.data, dpkt.ssl.TLSClientHello):  # 1
             print('--> ClientHello {0} -> {1}'.format(client, server))
             parse_client_hello(handshake)
-            return
+            break
         if isinstance(handshake.data, dpkt.ssl.TLSServerHello):  # 2
             print('<-- ServerHello {1} <- {0}'.format(client, server))
             parse_server_hello(handshake.data)
-            return
+            break
         if isinstance(handshake.data, dpkt.ssl.TLSCertificate):  # 11
             print('<-- Certificate {0} <- {1}'.format(client, server))
-            return
+            break
         if isinstance(handshake.data, dpkt.ssl.TLSServerKeyExchange):  # 12
             print('<-- ServerKeyExchange {1} <- {0}'.format(server, client))
-            return
+            break
         if isinstance(handshake.data, dpkt.ssl.TLSCertificateRequest):  # 13
             print('<-- CertificateRequest {1} <- {0}'.format(client, server))
-            return
+            break
         if isinstance(handshake.data, dpkt.ssl.TLSServerHelloDone):  # 14
             print('<-- ServerHelloDone {1} <- {0}'.format(client, server))
-            return
+            break
         if isinstance(handshake.data, dpkt.ssl.TLSCertificateVerify):  # 15
             print('--> CertificateVerify {0} -> {1}'.format(client, server))
-            return
+            break
         if isinstance(handshake.data, dpkt.ssl.TLSClientKeyExchange):  # 16
             print('[+++] --> ClientKeyExchange {0} -> {1}'.format(client, server))
-            return
+            break
         if isinstance(handshake.data, dpkt.ssl.TLSFinished):  # 20
             print('--> Finished {0} -> {1}'.format(client, server))
-            return
-        print('[-] Unrecognized handshake type: {0}'.format(handshake.data[0]))
+            break
+        print('[-] Unrecognized handshake type: {0}'.format(hexlify(handshake.data.data)))
     sys.stdout.flush()
 
 
@@ -275,8 +275,8 @@ def parse_extension(payload, type_name):
     payload = payload[:list_length]
     while (len(payload) > 0):
         if type_name == 'server_name':
-            _type, payload = unpacker('H', payload)
-            format_entry = 'p'
+            _type, payload = unpacker('B', payload)
+            format_entry = 'P'
         if type_name == 'application_layer_protocol_negotiation':
             format_entry = 'p'
         entry, payload = unpacker(format_entry, payload)
