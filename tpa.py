@@ -80,7 +80,7 @@ the Free Software Foundation, either version 3 of the License, or
             print('# ', end="")
             for arg in args:
                 print(arg, end="")
-            print
+            print()
     else:
         verboseprint = lambda *a: None
     interface = args.interface
@@ -178,17 +178,21 @@ def unpacker(type_string, packet):
         length = 2
     if type_string.endswith('B'):
         length = 1
-    if type_string.endswith('s'):
-        length = int(type_string[:(len(type_string) - 1)])
+    if type_string.endswith('P'):  # 2 bytes for the length of the string
+        length, packet = unpacker('H', packet)
+        type_string = '{0}s'.format(length)
+    if type_string.endswith('p'):  # 1 byte for the length of the string
+        length, packet = unpacker('B', packet)
+        type_string = '{0}s'.format(length)
     data = struct.unpack('!' + type_string, packet[:length])[0]
-    if type_string[0] == 's':
+    if type_string.endswith('s'):
         data = ''.join(data)
     return data, packet[length:]
 
 
 def parse_server_hello(handshake):
     payload = handshake.data
-    session_id, payload = parse_string('B', payload)
+    session_id, payload = unpacker('p', payload)
     cipher_suite, payload = unpacker('H', payload)
     print('[*]   Cipher: {0}'.format(pretty_print_name('cipher_suites', cipher_suite)))
 
@@ -200,12 +204,12 @@ def parse_client_hello(handshake):
     extensions = []
 #    handshake_length = number_of_bytes(len(hello))
     payload = handshake.data.data
-    session_id, payload = parse_string('B', payload)
+    session_id, payload = unpacker('p', payload)
     cipher_suites, pretty_cipher_suites = parse_extension(payload, 'cipher_suites')
     verboseprint('TLS Record Layer Length: {0}'.format(len(handshake)))
     verboseprint('Client Hello Version: {0}'.format(dpkt.ssl.ssl3_versions_str[hello.version]))
     verboseprint('Client Hello Length: {0}'.format(len(hello)))
-    verboseprint('Session ID: {0}'.format(session_id))
+    verboseprint('Session ID: {0}'.format(hexlify(session_id)))
     print('[*]   Ciphers: {0}'.format(pretty_cipher_suites))
     # consume 2 bytes for each cipher suite plus 2 length bytes
     payload = payload[(len(cipher_suites) * 2) + 2:]
@@ -271,13 +275,11 @@ def parse_extension(payload, type_name):
     payload = payload[:list_length]
     while (len(payload) > 0):
         if type_name == 'server_name':
-            _type, payload = unpacker('B', payload)
-            entry, payload = parse_string('H', payload)
-        else:
-            if type_name == 'application_layer_protocol_negotiation':
-                entry, payload = parse_string('B', payload)
-            else:
-                entry, payload = unpacker(format_entry, payload)
+            _type, payload = unpacker('H', payload)
+            format_entry = 'p'
+        if type_name == 'application_layer_protocol_negotiation':
+            format_entry = 'p'
+        entry, payload = unpacker(format_entry, payload)
         entries.append(entry)
         if type_name == 'signature_algorithms':
             pretty_entries.append('{0}-{1}'.format(pretty_print_name('signature_algorithms_hash', entry >> 8),
@@ -285,13 +287,6 @@ def parse_extension(payload, type_name):
         else:
             pretty_entries.append(pretty_print_name(type_name, entry))
     return entries, pretty_entries
-
-
-def parse_string(format_string, payload):
-    """Parses a Pascal-type string (length specified first) from payload."""
-    string_length, payload = unpacker(format_string, payload)
-    entry, payload = unpacker('{0}s'.format(string_length), payload)
-    return entry, payload
 
 
 def pretty_print_name(name_type, name_value):
