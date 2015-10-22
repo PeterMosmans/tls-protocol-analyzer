@@ -364,10 +364,12 @@ PRETTY_NAMES = {
     },
     'compression_methods': {
         0: 'null',
-        1: 'DEFLATE'
+        1: 'Zlib'
     },
     'ec_point_formats': {
-        0: 'uncompressed'
+        0: 'uncompressed',
+        1: 'ansiX962_compressed_prime',
+        2: 'ansiX962_compressed_char2'
     },
     'extension_type': {
         0: 'server_name',
@@ -380,7 +382,7 @@ PRETTY_NAMES = {
         7: 'client_authz',
         8: 'server_authz',
         9: 'cert_type',
-        10: 'supported_groups',
+        10: 'elliptic_curves',
         11: 'ec_point_formats',
         12: 'srp',
         13: 'signature_algorithms',
@@ -402,9 +404,9 @@ PRETTY_NAMES = {
         65281: 'renegotiation_info'},
     'heartbeat': {
         0: 'heartbeat_request',
-        1: 'heartbeat_response'
+        1: 'peer_allowed_to_send'
     },
-    'supported_groups': {
+    'elliptic_curves': {
         1: 'sect163k1',
         2: 'sect163r1',
         3: 'sect163r2',
@@ -455,5 +457,11 @@ PRETTY_NAMES = {
         1: 'rsa',
         2: 'dsa',
         3: 'ecdsa'
+    },
+    'tls_version': {
+        0x300: 'SSL 3.0',
+        0x301: 'TLS 1.0',
+        0x302: 'TLS 1.1',
+        0x303: 'TLS 1.2',
     }
 }
