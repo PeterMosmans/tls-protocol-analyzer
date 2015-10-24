@@ -15,6 +15,8 @@ import pcap
 
 from constants import PRETTY_NAMES
 TLS_HANDSHAKE = 22
+global streambuffer
+streambuffer = {}
 
 
 class Extension:
@@ -110,31 +112,59 @@ def list_interfaces():
 
 def parse_ip_packet(ip):
     sys.stdout.flush()
-    if isinstance(ip.data, dpkt.tcp.TCP):
+    if (isinstance(ip.data, dpkt.tcp.TCP) and len(ip.data.data)):
         parse_tcp_packet(ip)
 
 
 def parse_tcp_packet(ip):
-    if len(ip.data.data) and (ord(ip.data.data[0]) == TLS_HANDSHAKE):
-        parse_tls_handshake(ip)
+    global streambuffer
+    connection = '{0}:{1}-{2}:{3}'.format(socket.inet_ntoa(ip.src),
+                                          ip.data.sport,
+                                          socket.inet_ntoa(ip.dst),
+                                          ip.data.dport)
+    if streambuffer.has_key(connection):
+        # TODO: add pieces in the right order
+        verboseprint('Added sequence number {0:12d} to buffer'.
+                     format(ip.data.seq))
+        stream = streambuffer[connection] + ip.data.data
+        del streambuffer[connection]
+        if len(stream) > (10000):
+            verboseprint('Dumped partial stream, probably broken ({0} bytes)'.
+                         format(len(stream)))
+            return
+    else:
+        if ord(ip.data.data[0]) in set((20, 21, 22)):
+            stream = ip.data.data
+        else:
+            return
+    parse_tls_record(ip, stream)
 
 
-def parse_tls_handshake(ip):
-    tcp = ip.data
+def parse_tls_record(ip, stream):
+    global streambuffer
     records = []
-#    try:
-    records, bytes_used = dpkt.ssl.tls_multi_factory(tcp.data)
- #   except:
-#        verboseprint('exception - issue parsing TLS data')
- #       return
+    connection = '{0}:{1}-{2}:{3}'.format(socket.inet_ntoa(ip.src),
+                                          ip.data.sport,
+                                          socket.inet_ntoa(ip.dst),
+                                          ip.data.dport)
+    try:
+        records, bytes_used = dpkt.ssl.tls_multi_factory(stream)
+    except:
+        verboseprint('exception - issue parsing TLS data')
+        return
+    if bytes_used != len(stream):
+        streambuffer[connection] = stream[bytes_used:]
+        verboseprint('Added {0} bytes to streambuffer for connection pair {1}'.
+                     format(len(stream[bytes_used:]), connection))
     for record in records:
+        # to do: split based on record type
         try:
             handshake = dpkt.ssl.TLSHandshake(record.data)
         except:
             verboseprint('exception while parsing TLS handshake record')
             return
-        client = '{0}:{1}'.format(socket.inet_ntoa(ip.src), tcp.sport)
-        server = '{0}:{1}'.format(socket.inet_ntoa(ip.dst), tcp.dport)
+        client = '{0}:{1}'.format(socket.inet_ntoa(ip.src), ip.data.sport)
+        server = '{0}:{1}'.format(socket.inet_ntoa(ip.dst), ip.data.dport)
         if isinstance(handshake.data, dpkt.ssl.TLSClientHello):  # 1
             print('--> ClientHello {0} -> {1}'.format(client, server))
             parse_client_hello(handshake)
@@ -143,29 +173,29 @@ def parse_tls_handshake(ip):
             print('<-- ServerHello {1} <- {0}'.format(client, server))
             parse_server_hello(handshake.data)
             break
-        if isinstance(handshake.data, dpkt.ssl.TLSCertificate):  # 11
+        if (handshake.type == 11):
             print('<-- Certificate {0} <- {1}'.format(client, server))
             break
-        if isinstance(handshake.data, dpkt.ssl.TLSServerKeyExchange):  # 12
+        if (handshake.type == 12):
             print('<-- ServerKeyExchange {1} <- {0}'.format(server, client))
             break
-        if isinstance(handshake.data, dpkt.ssl.TLSCertificateRequest):  # 13
+        if (handshake.type == 13):
             print('<-- CertificateRequest {1} <- {0}'.format(client, server))
             break
-        if isinstance(handshake.data, dpkt.ssl.TLSServerHelloDone):  # 14
+        if (handshake.type == 14):
             print('<-- ServerHelloDone {1} <- {0}'.format(client, server))
             break
-        if isinstance(handshake.data, dpkt.ssl.TLSCertificateVerify):  # 15
+        if (handshake.type == 15):
             print('--> CertificateVerify {0} -> {1}'.format(client, server))
             break
-        if isinstance(handshake.data, dpkt.ssl.TLSClientKeyExchange):  # 16
+        if (handshake.type == 16):
             print('[+++] --> ClientKeyExchange {0} -> {1}'.format(client, server))
             break
-        if isinstance(handshake.data, dpkt.ssl.TLSFinished):  # 20
+        if (handshake.type == 20):
             print('--> Finished {0} -> {1}'.format(client, server))
             break
         print('[-] Unrecognized handshake type: {0}'.format(hexlify(handshake.data.data)))
-    sys.stdout.flush()
+        sys.stdout.flush()
 
 
 def number_of_bytes(number):
