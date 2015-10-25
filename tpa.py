@@ -130,6 +130,7 @@ def parse_tcp_packet(ip):
     Parses TCP packet.
     """
     global streambuffer
+    global encrypted_streams
     connection = '{0}:{1}-{2}:{3}'.format(socket.inet_ntoa(ip.src),
                                           ip.data.sport,
                                           socket.inet_ntoa(ip.dst),
@@ -138,7 +139,6 @@ def parse_tcp_packet(ip):
             stream = ip.data.data
     else:
         if streambuffer.has_key(connection):
-            # TODO: add pieces in the right order
             verboseprint('Added sequence number {0:12d} to buffer'.
                          format(ip.data.seq))
             stream = streambuffer[connection] + ip.data.data
@@ -147,6 +147,10 @@ def parse_tcp_packet(ip):
                 verboseprint('Flushed buffer ({0} bytes)'.
                              format(len(stream)))
         else:
+            if ord(ip.data.data[0]) == 23 and connection in encrypted_streams:
+                    encrypted_streams.remove(connection)
+                    print('[+] Encrypted connection established between {0}'.
+                          format(connection))
             return
     parse_tls_records(ip, stream)
 
@@ -169,7 +173,12 @@ def parse_tls_records(ip, stream):
     """
     Parses TLS Records.
     """
-    records, bytes_used = dpkt.ssl.tls_multi_factory(stream)
+    try:
+        records, bytes_used = dpkt.ssl.tls_multi_factory(stream)
+    except dpkt.ssl.SSL3Exception as exception:
+        verboseprint('exception while parsing TLS records: {0}'.
+                     format(exception))
+        return
     connection = '{0}:{1}-{2}:{3}'.format(socket.inet_ntoa(ip.src),
                                           ip.data.sport,
                                           socket.inet_ntoa(ip.dst),
@@ -186,7 +195,8 @@ def parse_tls_records(ip, stream):
             print('[+] TLS Alert message')
             verboseprint(hexlify(stream))
         if record_type == 'change_cipher':
-            print('[+] Change cipher message - encrypted messages from now on')
+            print('[+] Change cipher - encrypted messages from now on for {0}'.
+                  format(connection))
             encrypted_streams.append(connection)
         sys.stdout.flush()
 
