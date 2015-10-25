@@ -1,4 +1,31 @@
 PRETTY_NAMES = {
+    'alert_messages': {
+        0: 'close_notify',
+        10: 'unexpected_message',
+        20: 'bad_record_mac',
+        21: 'decryption_failed',
+        22: 'record_overflow',
+        30: 'decompression_failure',
+        40: 'handshake_failure',
+        41: 'no_certificate',
+        42: 'bad_certificate',
+        43: 'unsupported_certificate',
+        44: 'certificate_revoked',
+        45: 'certificate_expired',
+        46: 'certificate_unknown',
+        47: 'illegal_parameter',
+        48: 'unknown_ca',
+        49: 'access_denied',
+        50: 'decode_error',
+        51: 'decrypt_error',
+        60: 'export_restriction_RESERVED',
+        70: 'protocol_version',
+        71: 'insufficient_security',
+        80: 'internal_error',
+        90: 'user_canceled',
+       100: 'no_renegotiation',
+       110: 'unsupported_extension'
+    },
     'cipher_suites': {
         0x010080: 'SSL_CK_RC4_128_WITH_MD5',
         0x020080: 'SSL_CK_RC4_128_EXPORT40_WITH_MD5',
@@ -457,6 +484,9 @@ PRETTY_NAMES = {
         1: 'rsa',
         2: 'dsa',
         3: 'ecdsa'
+    },
+    'status_request': {
+        0: 'empty'
     },
     'tls_record': {
         20: 'change_cipher',
