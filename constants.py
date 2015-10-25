@@ -458,6 +458,12 @@ PRETTY_NAMES = {
         2: 'dsa',
         3: 'ecdsa'
     },
+    'tls_record': {
+        20: 'change_cipher',
+        21: 'alert',
+        22: 'handshake',
+        23: 'application_data'
+    },
     'tls_version': {
         0x300: 'SSL 3.0',
         0x301: 'TLS 1.0',
