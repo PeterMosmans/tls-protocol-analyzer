@@ -17,6 +17,8 @@ from constants import PRETTY_NAMES
 
 global streambuffer
 streambuffer = {}
+global encrypted_streams
+encrypted_streams = []
 
 
 class Extension:
@@ -168,6 +170,11 @@ def parse_tls_records(ip, stream):
     Parses TLS Records.
     """
     records, bytes_used = dpkt.ssl.tls_multi_factory(stream)
+    connection = '{0}:{1}-{2}:{3}'.format(socket.inet_ntoa(ip.src),
+                                          ip.data.sport,
+                                          socket.inet_ntoa(ip.dst),
+                                          ip.data.dport)
+    global encrypted_streams
     if bytes_used != len(stream):
         add_to_buffer(ip, stream[bytes_used:])
     for record in records:
@@ -178,8 +185,9 @@ def parse_tls_records(ip, stream):
         if record_type == 'alert':
             print('[+] TLS Alert message')
             verboseprint(hexlify(stream))
-        if record_type == 'change_ciper':
-            print('[+] Change cipher message')
+        if record_type == 'change_cipher':
+            print('[+] Change cipher message - encrypted messages from now on')
+            encrypted_streams.append(connection)
         sys.stdout.flush()
 
 
@@ -187,49 +195,55 @@ def parse_tls_handshake(ip, data):
     """
     Parses TLS Handshake message contained in data according to their type.
     """
-    try:
-        handshake_type = ord(data[:1])
-        verboseprint('First 10 bytes {0}'.
-                     format(hexlify(data[:10])))
-        if handshake_type == 4:
-            print('[#] New Session Ticket is unfortunately not implemented yet')
+    connection = '{0}:{1}-{2}:{3}'.format(socket.inet_ntoa(ip.src),
+                                          ip.data.sport,
+                                          socket.inet_ntoa(ip.dst),
+                                          ip.data.dport)
+    if connection in encrypted_streams:
+        print('[+] Encrypted handshake message between {0}'.format(connection))
+        return
+    else:
+        try:
+            handshake_type = ord(data[:1])
+            verboseprint('First 10 bytes {0}'.
+                         format(hexlify(data[:10])))
+            if handshake_type == 4:
+                print('[#] New Session Ticket is not implemented yet')
+                return
+            else:
+                handshake = dpkt.ssl.TLSHandshake(data)
+        except dpkt.ssl.SSL3Exception as exception:
+            verboseprint('exception while parsing TLS handshake record: {0}'.
+                         format(exception))
             return
-        else:
-            handshake = dpkt.ssl.TLSHandshake(data)
-    except dpkt.ssl.SSL3Exception as exception:
-        verboseprint('exception while parsing TLS handshake record: {0}'.
-                     format(exception))
-        return
-    except dpkt.dpkt.NeedData as exception:
-        verboseprint('exception while parsing TLS handshake record: {0}'.
-                     format(exception))
-        return
+        except dpkt.dpkt.NeedData as exception:
+            verboseprint('exception while parsing TLS handshake record: {0}'.
+                         format(exception))
+            return
     client = '{0}:{1}'.format(socket.inet_ntoa(ip.src), ip.data.sport)
     server = '{0}:{1}'.format(socket.inet_ntoa(ip.dst), ip.data.dport)
     if handshake.type == 0:
-        print('<-- Hello Request {0} <- {1}'.format(client, server))
+        print('<-  Hello Request {0} <- {1}'.format(client, server))
     if handshake.type == 1:
-        print('--> ClientHello {0} -> {1}'.format(client, server))
+        print(' -> ClientHello {0} -> {1}'.format(client, server))
         parse_client_hello(handshake)
     if handshake.type == 2:
-        print('<-- ServerHello {1} <- {0}'.format(client, server))
+        print('<-  ServerHello {1} <- {0}'.format(client, server))
         parse_server_hello(handshake.data)
-    if handshake.type == 4:
-        print('NEW SESSION TICKET MESSAGE TYPE')
     if handshake.type == 11:
-        print('<-- Certificate {0} <- {1}'.format(client, server))
+        print('<-  Certificate {0} <- {1}'.format(client, server))
     if handshake.type == 12:
-        print('<-- ServerKeyExchange {1} <- {0}'.format(server, client))
+        print('<-  ServerKeyExchange {1} <- {0}'.format(server, client))
     if handshake.type == 13:
-        print('<-- CertificateRequest {1} <- {0}'.format(client, server))
+        print('<-  CertificateRequest {1} <- {0}'.format(client, server))
     if handshake.type == 14:
-        print('<-- ServerHelloDone {1} <- {0}'.format(client, server))
+        print('<-  ServerHelloDone {1} <- {0}'.format(client, server))
     if handshake.type == 15:
-        print('--> CertificateVerify {0} -> {1}'.format(client, server))
+        print(' -> CertificateVerify {0} -> {1}'.format(client, server))
     if handshake.type == 16:
-        print('[+++] --> ClientKeyExchange {0} -> {1}'.format(client, server))
+        print(' -> ClientKeyExchange {0} -> {1}'.format(client, server))
     if handshake.type == 20:
-        print('--> Finished {0} -> {1}'.format(client, server))
+        print(' -> Finished {0} -> {1}'.format(client, server))
 
 
 def unpacker(type_string, packet):
