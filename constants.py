@@ -1,5 +1,9 @@
 PRETTY_NAMES = {
-    'alert_messages': {
+    'alert_level': {
+        1: 'warning',
+        2: 'fatal'
+    },
+    'alert_description': {
         0: 'close_notify',
         10: 'unexpected_message',
         20: 'bad_record_mac',
@@ -18,13 +22,19 @@ PRETTY_NAMES = {
         49: 'access_denied',
         50: 'decode_error',
         51: 'decrypt_error',
-        60: 'export_restriction_RESERVED',
+        60: 'export_restriction',
         70: 'protocol_version',
         71: 'insufficient_security',
         80: 'internal_error',
+        86: 'inappropriate_fallback',
         90: 'user_canceled',
-       100: 'no_renegotiation',
-       110: 'unsupported_extension'
+        100: 'no_renegotiation',
+        110: 'unsupported_extension',
+        111: 'certificate_unobtainable',
+        112: 'unrecognized_name',
+        113: 'bad_certificate_status_response',
+        114: 'bad_certificate_hash_value',
+        115: 'unknown_psk_identity'
     },
     'cipher_suites': {
         0x010080: 'SSL_CK_RC4_128_WITH_MD5',
