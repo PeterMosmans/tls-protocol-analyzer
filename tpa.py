@@ -192,8 +192,7 @@ def parse_tls_records(ip, stream):
         if record_type == 'handshake':
             parse_tls_handshake(ip, record.data)
         if record_type == 'alert':
-            print('[+] TLS Alert message')
-            verboseprint(hexlify(stream))
+            parse_alert_message(connection, record.data)
         if record_type == 'change_cipher':
             print('[+] Change cipher - encrypted messages from now on for {0}'.
                   format(connection))
@@ -257,7 +256,9 @@ def parse_tls_handshake(ip, data):
 
 
 def unpacker(type_string, packet):
-    """Returns network-order parsed data and the packet minus the parsed data."""
+    """
+    Returns network-order parsed data and the packet minus the parsed data.
+    """
     if type_string.endswith('H'):
         length = 2
     if type_string.endswith('B'):
@@ -323,6 +324,24 @@ def parse_extensions(payload):
     return extensions
 
 
+def parse_alert_message(connection, payload):
+    """
+    Parses a TLS alert message.
+    """
+    global encrypted_streams
+    verboseprint(hexlify(payload))
+    if connection in encrypted_streams:
+        print('[+] Encrypted TLS Alert message between {0}'.format(connection))
+        # presume the alert message ended the encryption
+        encrypted_streams.remove(connection)
+    else:
+        alert_level, payload = unpacker('B', payload)
+        alert_description, payload = unpacker('B', payload)
+        print('[+] TLS Alert message between {0}: {1} {2}'.
+              format(connection, pretty_print_name('alert_level', alert_level),
+                     pretty_print_name('alert_description', alert_description)))
+
+
 def parse_extension(payload, type_name):
     """
     Parses an extension based on the type_name.
@@ -341,11 +360,14 @@ def parse_extension(payload, type_name):
     if type_name == 'compression_methods':
         format_list_length = 'B'
         format_entry = 'B'
+    if type_name == 'heartbeat':
+        format_list_length = 'B'
+        format_entry = 'B'
     if len(payload) > 1:  # contents are a list
         list_length, payload = unpacker(format_list_length, payload)
         verboseprint('type {0}, list type is {1}, number of entries is {2}'.
                      format(type_name, format_list_length, list_length))
-    if type_name == 'status_request':
+    if type_name == 'status_request' or type_name == 'status_request_v2':
         _type, payload = unpacker('B', payload)
         format_entry = 'H'
     if type_name  == 'padding':
