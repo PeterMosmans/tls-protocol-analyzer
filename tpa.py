@@ -21,7 +21,7 @@ global encrypted_streams
 encrypted_streams = []
 
 
-class Extension:
+class Extension(object):
     """
     Encapsulates TLS extensions.
     """
@@ -42,7 +42,7 @@ class Extension:
         return '{0}: {1}'.format(self._type_name, self._pretty_data)
 
 
-def analyze_packet(timestamp, packet):
+def analyze_packet(_timestamp, packet):
     """
     Main analysis loop for pcap.
     """
@@ -53,7 +53,7 @@ def analyze_packet(timestamp, packet):
 
 def parse_arguments():
     """
-    Parses command line arguments
+    Parses command line arguments.
     """
     global filename
     global cap_filter
@@ -99,6 +99,9 @@ the Free Software Foundation, either version 3 of the License, or
 
 
 def list_interfaces():
+    """
+    Prints out all available interfaces with IP adresses, when possible.
+    """
     i = 0
     for name in pcap.findalldevs():
         prettydevicename = ''
@@ -148,9 +151,8 @@ def parse_tcp_packet(ip):
                              format(len(stream)))
         else:
             if ord(ip.data.data[0]) == 23 and connection in encrypted_streams:
-                    encrypted_streams.remove(connection)
-                    print('[+] Encrypted connection established between {0}'.
-                          format(connection))
+                    verboseprint('Encrypted data between {0}'.
+                                 format(connection))
             return
     parse_tls_records(ip, stream)
 
@@ -280,6 +282,9 @@ def parse_server_hello(handshake):
     session_id, payload = unpacker('p', payload)
     cipher_suite, payload = unpacker('H', payload)
     print('[*]   Cipher: {0}'.format(pretty_print_name('cipher_suites', cipher_suite)))
+    # extensions = parse_extensions(payload)
+    # for extension in extensions:
+    #    print('      {0}'.format(extension))
 
 
 def parse_client_hello(handshake):
@@ -445,10 +450,10 @@ def start_listening(interface, cap_filter):
         print('[-] Issue: {0}'.format(exception))
         sys.exit(-1)
     while True:
-        print('[+] listening on {0}'.format(capture.name))
+        print('[+] Listening on {0}'.format(capture.name))
         sys.stdout.flush()
         capture.loop(0, analyze_packet)
-        print('[-] stopping')
+        print('[-] Capture stopped unexpectedly, restarting...')
 
 
 if __name__ == "__main__":
