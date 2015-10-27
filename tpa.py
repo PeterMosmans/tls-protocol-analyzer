@@ -115,7 +115,7 @@ def list_interfaces():
             import netifaces
             print('{1}{0} {2}'.format(name, prettydevicename,
                                       netifaces.ifaddresses(queryname)[netifaces.AF_INET][0]['addr']))
-        except:
+        except ImportError:
             print('{0}{1}'.format(prettydevicename, name))
 
 
@@ -281,10 +281,14 @@ def parse_server_hello(handshake):
     payload = handshake.data
     session_id, payload = unpacker('p', payload)
     cipher_suite, payload = unpacker('H', payload)
-    print('[*]   Cipher: {0}'.format(pretty_print_name('cipher_suites', cipher_suite)))
-    # extensions = parse_extensions(payload)
-    # for extension in extensions:
-    #    print('      {0}'.format(extension))
+    print('[*]   Cipher: {0}'.format(pretty_print_name('cipher_suites',
+                                                       cipher_suite)))
+    compression, payload = unpacker('B', payload)
+    print('[*]   Cipher: {0}'.format(pretty_print_name('compression_methods',
+                                                       compression)))
+    extensions = parse_extensions(payload)
+    for extension in extensions:
+        print('      {0}'.format(extension))
 
 
 def parse_client_hello(handshake):
