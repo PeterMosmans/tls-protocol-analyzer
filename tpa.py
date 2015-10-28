@@ -27,7 +27,7 @@ class Extension(object):
     """
     def __init__(self, payload):
         self._type_id, payload = unpacker('H', payload)
-        self._type_name = pretty_print_name('extension_type', self._type_id)
+        self._type_name = pretty_name('extension_type', self._type_id)
         self._length, payload = unpacker('H', payload)
         # Data contains an array with the 'raw' contents
         self._data = None
@@ -106,7 +106,7 @@ def list_interfaces():
     for name in pcap.findalldevs():
         prettydevicename = ''
         queryname = name
-        if name.startswith("\Device\NPF_"):
+        if name.startswith(r'\Device\NPF_'):
             queryname = name[12:]
         if name.endswith('}'):
             prettydevicename = 'eth{0} '.format(i)
@@ -114,7 +114,8 @@ def list_interfaces():
         try:
             import netifaces
             print('{1}{0} {2}'.format(name, prettydevicename,
-                                      netifaces.ifaddresses(queryname)[netifaces.AF_INET][0]['addr']))
+                                      netifaces.ifaddresses(queryname)
+                                      [netifaces.AF_INET][0]['addr']))
         except ImportError:
             print('{0}{1}'.format(prettydevicename, name))
 
@@ -124,7 +125,7 @@ def parse_ip_packet(ip):
     Parses IP packet.
     """
     sys.stdout.flush()
-    if (isinstance(ip.data, dpkt.tcp.TCP) and len(ip.data.data)):
+    if isinstance(ip.data, dpkt.tcp.TCP) and len(ip.data.data):
         parse_tcp_packet(ip)
 
 
@@ -139,7 +140,7 @@ def parse_tcp_packet(ip):
                                           socket.inet_ntoa(ip.dst),
                                           ip.data.dport)
     if ord(ip.data.data[0]) in set((20, 21, 22)):
-            stream = ip.data.data
+        stream = ip.data.data
     else:
         if streambuffer.has_key(connection):
             verboseprint('Added sequence number {0:12d} to buffer'.
@@ -151,8 +152,8 @@ def parse_tcp_packet(ip):
                              format(len(stream)))
         else:
             if ord(ip.data.data[0]) == 23 and connection in encrypted_streams:
-                    verboseprint('Encrypted data between {0}'.
-                                 format(connection))
+                verboseprint('Encrypted data between {0}'.
+                             format(connection))
             return
     parse_tls_records(ip, stream)
 
@@ -189,7 +190,7 @@ def parse_tls_records(ip, stream):
     if bytes_used != len(stream):
         add_to_buffer(ip, stream[bytes_used:])
     for record in records:
-        record_type = pretty_print_name('tls_record', record.type)
+        record_type = pretty_name('tls_record', record.type)
         verboseprint('captured TLS record type {0}'.format(record_type))
         if record_type == 'handshake':
             parse_tls_handshake(ip, record.data)
@@ -281,11 +282,11 @@ def parse_server_hello(handshake):
     payload = handshake.data
     session_id, payload = unpacker('p', payload)
     cipher_suite, payload = unpacker('H', payload)
-    print('[*]   Cipher: {0}'.format(pretty_print_name('cipher_suites',
-                                                       cipher_suite)))
+    print('[*]   Cipher: {0}'.format(pretty_name('cipher_suites',
+                                                 cipher_suite)))
     compression, payload = unpacker('B', payload)
-    print('[*]   Cipher: {0}'.format(pretty_print_name('compression_methods',
-                                                       compression)))
+    print('[*]   Cipher: {0}'.format(pretty_name('compression_methods',
+                                                 compression)))
     extensions = parse_extensions(payload)
     for extension in extensions:
         print('      {0}'.format(extension))
@@ -320,12 +321,12 @@ def parse_extensions(payload):
     Parse data as one or more TLS extensions.
     """
     extensions = []
-    if (len(payload) <= 0):
+    if len(payload) <= 0:
         return
     print('[*]   Extensions:')
     extensions_len, payload = unpacker('H', payload)
     verboseprint('Extensions Length: {0}'.format(extensions_len))
-    while (len(payload) > 0):
+    while len(payload) > 0:
         extension = Extension(payload)
         extensions.append(extension)
         # consume 2 bytes for type and 2 bytes for length
@@ -347,8 +348,8 @@ def parse_alert_message(connection, payload):
         alert_level, payload = unpacker('B', payload)
         alert_description, payload = unpacker('B', payload)
         print('[+] TLS Alert message between {0}: {1} {2}'.
-              format(connection, pretty_print_name('alert_level', alert_level),
-                     pretty_print_name('alert_description', alert_description)))
+              format(connection, pretty_name('alert_level', alert_level),
+                     pretty_name('alert_description', alert_description)))
 
 
 def parse_extension(payload, type_name):
@@ -379,7 +380,7 @@ def parse_extension(payload, type_name):
     if type_name == 'status_request' or type_name == 'status_request_v2':
         _type, payload = unpacker('B', payload)
         format_entry = 'H'
-    if type_name  == 'padding':
+    if type_name == 'padding':
         return payload, hexlify(payload)
     if type_name == 'SessionTicket_TLS':
         return payload, hexlify(payload)
@@ -401,17 +402,21 @@ def parse_extension(payload, type_name):
         entry, payload = unpacker(format_entry, payload)
         entries.append(entry)
         if type_name == 'signature_algorithms':
-            pretty_entries.append('{0}-{1}'.format(pretty_print_name('signature_algorithms_hash', entry >> 8),
-                                                    pretty_print_name('signature_algorithms_signature', entry % 256)))
+            pretty_entries.append('{0}-{1}'.
+                                  format(pretty_name
+                                         ('signature_algorithms_hash',
+                                          entry >> 8),
+                                         pretty_name('signature_algorithms_signature',
+                                                     entry % 256)))
         else:
             if format_entry.lower() == 'p':
                 pretty_entries.append(entry)
             else:
-                pretty_entries.append(pretty_print_name(type_name, entry))
+                pretty_entries.append(pretty_name(type_name, entry))
     return entries, pretty_entries
 
 
-def pretty_print_name(name_type, name_value):
+def pretty_name(name_type, name_value):
     """Returns the pretty name for type name_type."""
     if name_type in PRETTY_NAMES:
         if name_value in PRETTY_NAMES[name_type]:
