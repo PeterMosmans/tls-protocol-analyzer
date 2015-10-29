@@ -279,13 +279,16 @@ def unpacker(type_string, packet):
 
 
 def parse_server_hello(handshake):
+    """
+    Parses server hello handshake.
+    """
     payload = handshake.data
     session_id, payload = unpacker('p', payload)
     cipher_suite, payload = unpacker('H', payload)
     print('[*]   Cipher: {0}'.format(pretty_name('cipher_suites',
                                                  cipher_suite)))
     compression, payload = unpacker('B', payload)
-    print('[*]   Cipher: {0}'.format(pretty_name('compression_methods',
+    print('[*]   Compression: {0}'.format(pretty_name('compression_methods',
                                                  compression)))
     extensions = parse_extensions(payload)
     for extension in extensions:
@@ -373,10 +376,13 @@ def parse_extension(payload, type_name):
     if type_name == 'heartbeat':
         format_list_length = 'B'
         format_entry = 'B'
-    if len(payload) > 1:  # contents are a list
-        list_length, payload = unpacker(format_list_length, payload)
-        verboseprint('type {0}, list type is {1}, number of entries is {2}'.
-                     format(type_name, format_list_length, list_length))
+    if type_name == 'next_protocol_negotiation':
+        format_entry = 'p'
+    else:
+        if len(payload) > 1:  # contents are a list
+            list_length, payload = unpacker(format_list_length, payload)
+    verboseprint('type {0}, list type is {1}, number of entries is {2}'.
+                 format(type_name, format_list_length, list_length))
     if type_name == 'status_request' or type_name == 'status_request_v2':
         _type, payload = unpacker('B', payload)
         format_entry = 'H'
@@ -392,7 +398,8 @@ def parse_extension(payload, type_name):
         format_entry = 'H'
     if type_name == 'cipher_suites':
         format_entry = 'H'
-    payload = payload[:list_length]
+    if list_length:
+        payload = payload[:list_length]
     while (len(payload) > 0):
         if type_name == 'server_name':
             _type, payload = unpacker('B', payload)
@@ -429,6 +436,9 @@ def pretty_name(name_type, name_value):
 
 
 def main():
+    """
+    Main program loop.
+    """
     global cap_filter
     global interface
     parse_arguments()
